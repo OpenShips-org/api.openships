@@ -17,6 +17,9 @@ if (!API_KEY) {
 // create pool only if DB_USER/PSWD present
 let pool;
 let handlers = {};
+// promise that resolves once handlers are loaded (or immediately if no DB)
+let handlersReady = Promise.resolve();
+
 if (DB_USER && DB_PSWD) {
   pool = mysql
     .createPool({
@@ -31,7 +34,7 @@ if (DB_USER && DB_PSWD) {
     .promise();
 
   // load handlers and let them ensure tables
-  (async function initHandlers() {
+  handlersReady = (async function initHandlers() {
     try {
       const mh = require('./message_handlers');
       handlers = await mh.loadHandlers(pool);
@@ -72,21 +75,47 @@ socket.on("close", (code, reason) => {
 
 socket.on('message', async (data) => {
   const payload = typeof data === 'string' ? data : data.toString();
+  // wait until handlers (and DB tables) are ready before processing messages
+  try {
+    await handlersReady;
+  } catch (err) {
+    // handlersReady should not reject, but guard just in case
+    console.error('handlersReady rejected:', err);
+  }
+
   try {
     const aisMessage = JSON.parse(payload);
 
     const type = aisMessage.MessageType;
-    if (type && handlers[type] && typeof handlers[type].handle === 'function') {
-      try {
-        await handlers[type].handle(pool, aisMessage);
-      } catch (err) {
-        console.error(`Handler error for ${type}:`, err);
-      }
-    } else {
-      // fallback: ignore or log
-      // console.log('Unhandled message type:', type);
+    if (!type) {
+      // be explicit in logs so we can map incoming payloads to handlers
+      // console.debug('Incoming message without MessageType', aisMessage);
+      return;
+    }
+
+    const handlerEntry = handlers[type];
+    if (!handlerEntry || typeof handlerEntry.handle !== 'function') {
+      console.warn('No handler registered for MessageType:', type);
+      return;
+    }
+
+    try {
+      console.debug(`Dispatching ${type} to handler`);
+      const res = await handlerEntry.handle(pool, aisMessage);
+      // handler implementations may not return anything; log success anyway
+      console.log(`Handler '${type}' executed${res ? `, result: ${JSON.stringify(res).slice(0,200)}` : ''}`);
+    } catch (err) {
+      console.error(`Handler error for ${type}:`, err);
     }
   } catch (err) {
     console.error('Failed to parse incoming message:', err, payload);
   }
+});
+
+// global error handlers to catch async mistakes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('unhandledRejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException:', err);
 });

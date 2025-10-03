@@ -1,4 +1,4 @@
-exports.messageType = 'StaticReport';
+exports.messageType = ['ShipStaticData'];
 
 exports.ensure = async function(pool) {
     await pool.query(`
@@ -20,13 +20,36 @@ exports.ensure = async function(pool) {
 };
 
 exports.handle = async function(pool, message) {
-    if (!pool) return;
+    try {
+        console.debug('StaticReport handler entry sample:', JSON.stringify(message).slice(0,500));
+    } catch (err) {
+        // ignore stringify errors
+    }
+    if (!pool) {
+        console.warn('StaticReport handler: no DB pool available, skipping write');
+        return;
+    }
 
-    const payload = message && message.Message && message.Message.StaticReport;
-    if (!payload) return;
+    // incoming messages use different field names depending on provider/version
+    const payload = message && message.Message && (
+        message.Message.StaticReport || message.Message.StaticDataReport || message.Message.ShipStaticData || message.Message.Static
+    );
+    if (!payload) {
+        try {
+            const sample = JSON.stringify(message).slice(0, 1000);
+            console.debug('StaticReport handler: missing StaticReport payload, message sample:', sample);
+        } catch (err) {
+            console.debug('StaticReport handler: missing payload and failed to stringify message');
+        }
+        return;
+    }
 
-    const m = payload.MMSI || payload.mmsi || null;
-    if (!m) return;
+    const meta = message.MetaData || payload.Metadata || {};
+    const m = meta.MMSI || meta.MMSI_String || payload.MMSI || payload.mmsi || null;
+    if (!m) {
+        console.debug('StaticReport handler: no MMSI found, sample meta:', JSON.stringify(meta).slice(0,200));
+        return;
+    }
     
     const imo = payload.ImoNumber || null;
     const callSign = payload.CallSign || payload.callSign || null;
@@ -45,21 +68,33 @@ exports.handle = async function(pool, message) {
         eta = new Date(Date.UTC(payload.Eta.Year, payload.Eta.Month - 1, payload.Eta.Day, hour, payload.Eta.Minute));
     }
 
-    await pool.query(
-        `INSERT INTO static_reports (mmsi, imo, callSign, ship_name, destination, dimensionA, dimensionB, dimensionC, dimensionD, ship_type, max_draught, eta)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-            imo = VALUES(imo),
-            callSign = VALUES(callSign),
-            ship_name = VALUES(ship_name),
-            destination = VALUES(destination),
-            dimensionA = VALUES(dimensionA),
-            dimensionB = VALUES(dimensionB),
-            dimensionC = VALUES(dimensionC),
-            dimensionD = VALUES(dimensionD),
-            ship_type = VALUES(ship_type),
-            max_draught = VALUES(max_draught),
-            eta = VALUES(eta)`,
-        [m, imo, callSign, ship_name, destination, dimensionA, dimensionB, dimensionC, dimensionD, ship_type, max_draught, eta]
-    );
+    try {
+        const [result] = await pool.query(
+            `INSERT INTO static_reports (mmsi, imo, callSign, ship_name, destination, dimensionA, dimensionB, dimensionC, dimensionD, ship_type, max_draught, eta)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                imo = VALUES(imo),
+                callSign = VALUES(callSign),
+                ship_name = VALUES(ship_name),
+                destination = VALUES(destination),
+                dimensionA = VALUES(dimensionA),
+                dimensionB = VALUES(dimensionB),
+                dimensionC = VALUES(dimensionC),
+                dimensionD = VALUES(dimensionD),
+                ship_type = VALUES(ship_type),
+                max_draught = VALUES(max_draught),
+                eta = VALUES(eta)`,
+            [m, imo, callSign, ship_name, destination, dimensionA, dimensionB, dimensionC, dimensionD, ship_type, max_draught, eta]
+        );
+
+        if (result && typeof result.affectedRows !== 'undefined') {
+            console.log(`StaticReport DB write for mmsi=${m} affectedRows=${result.affectedRows}`);
+        } else {
+            console.log(`StaticReport DB write for mmsi=${m} result=${JSON.stringify(result).slice(0,200)}`);
+        }
+        return result;
+    } catch (err) {
+        console.error('StaticReport handler DB error:', err, { m, ship_name });
+        throw err;
+    }
 };

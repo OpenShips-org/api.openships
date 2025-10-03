@@ -11,13 +11,19 @@ async function loadHandlers(pool) {
     try {
       const h = require(modPath);
       if (h && h.messageType) {
-        handlers[h.messageType] = h;
+        const names = Array.isArray(h.messageType) ? h.messageType : [h.messageType];
+        for (const name of names) {
+          if (handlers[name]) {
+            console.warn(`Handler for messageType ${name} is being overwritten by ${modPath}`);
+          }
+          handlers[name] = h;
+        }
         if (pool && typeof h.ensure === 'function') {
           try {
             await h.ensure(pool);
-            console.log(`Ensured table for handler ${h.messageType}`);
+            console.log(`Ensured table for handler ${names.join(',')}`);
           } catch (err) {
-            console.error(`Failed to ensure table for handler ${h.messageType}:`, err);
+            console.error(`Failed to ensure table for handler ${names.join(',')}:`, err);
           }
         }
       }
