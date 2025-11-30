@@ -143,15 +143,13 @@ function createSocket() {
 
       const handlerEntry = handlers[type];
       if (!handlerEntry || typeof handlerEntry.handle !== 'function') {
-        console.warn('No handler registered for MessageType:', type);
+        // no handler for this type; ignore
         return;
       }
 
       try {
-        console.debug(`Dispatching ${type} to handler`);
         const res = await handlerEntry.handle(pool, aisMessage);
         // handler implementations may not return anything; log success anyway
-        console.log(`Handler '${type}' executed${res ? `, result: ${JSON.stringify(res).slice(0,200)}` : ''}`);
       } catch (err) {
         console.error(`Handler error for ${type}:`, err);
       }

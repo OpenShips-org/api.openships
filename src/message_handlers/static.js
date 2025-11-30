@@ -20,11 +20,6 @@ exports.ensure = async function(pool) {
 };
 
 exports.handle = async function(pool, message) {
-    try {
-        console.debug('StaticReport handler entry sample:', JSON.stringify(message).slice(0,500));
-    } catch (err) {
-        // ignore stringify errors
-    }
     if (!pool) {
         console.warn('StaticReport handler: no DB pool available, skipping write');
         return;
@@ -88,9 +83,9 @@ exports.handle = async function(pool, message) {
         );
 
         if (result && typeof result.affectedRows !== 'undefined') {
-            console.log(`StaticReport DB write for mmsi=${m} affectedRows=${result.affectedRows}`);
+            // console.log(`StaticReport DB write for mmsi=${m} affectedRows=${result.affectedRows}`);
         } else {
-            console.log(`StaticReport DB write for mmsi=${m} result=${JSON.stringify(result).slice(0,200)}`);
+            // console.log(`StaticReport DB write for mmsi=${m} result=${JSON.stringify(result).slice(0,200)}`);
         }
         return result;
     } catch (err) {

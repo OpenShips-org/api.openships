@@ -36,25 +36,12 @@ exports.ensure = async function(pool) {
 };
 
 exports.handle = async function(pool, message) {
-	try {
-		console.debug('PositionReport handler entry sample:', JSON.stringify(message).slice(0,500));
-	} catch (err) {
-		// ignore stringify errors
-	}
 	if (!pool) {
-		console.warn('PositionReport handler: no DB pool available, skipping write');
 		return;
 	}
 
 	const payload = message && message.Message && message.Message.PositionReport;
 	if (!payload) {
-		// nothing to do — log a short sample so we can inspect the incoming shape
-		try {
-			const sample = JSON.stringify(message).slice(0, 1000);
-			console.debug('PositionReport handler: missing PositionReport payload, message sample:', sample);
-		} catch (err) {
-			console.debug('PositionReport handler: missing payload and failed to stringify message');
-		}
 		return;
 	}
 
@@ -97,9 +84,9 @@ exports.handle = async function(pool, message) {
 		);
 
 		if (result && typeof result.affectedRows !== 'undefined') {
-			console.log(`PositionReport DB write for mmsi=${m} affectedRows=${result.affectedRows}`);
+			// console.log(`PositionReport DB write for mmsi=${m} affectedRows=${result.affectedRows}`);
 		} else {
-			console.log(`PositionReport DB write for mmsi=${m} result=${JSON.stringify(result).slice(0,200)}`);
+			// console.log(`PositionReport DB write for mmsi=${m} result=${JSON.stringify(result).slice(0,200)}`);
 		}
 
 		// Save to history
@@ -126,9 +113,17 @@ async function saveToHistory(pool, payload, metaData, m) {
     const lat = payload.Latitude ?? null;
     const special_manoeuvre_indicator = payload.SpecialManoeuvreIndicator ?? null;
     const timestamp = metaData.time_utc ? new Date(metaData.time_utc) : null;
+	if (isNaN(timestamp)) {
+    	console.debug('Invalid timestamp, skipping entry for mmsi:', m);
+    	return;
+	}
 
-    const MIN_DISTANCE = 0.0001; // ca. 10 Meter
-    const MIN_TIME_DIFF_MS = 10 * 60 * 1000; // 10 Minuten
+
+    // Angepasste Schwellenwerte
+    const MIN_DISTANCE = 0.001; // ca. 100 Meter (realistischer)
+    const MIN_TIME_DIFF_MS = 2 * 60 * 1000; // 2 Minuten (häufigere Updates)
+
+	let timeDiff = 0;
 
     try {
         const [result] = await pool.query(
@@ -142,7 +137,7 @@ async function saveToHistory(pool, payload, metaData, m) {
             // Zeitprüfung
             const lastTime = lastEntry.timestamp ? new Date(lastEntry.timestamp).getTime() : 0;
             const currentTime = timestamp ? timestamp.getTime() : Date.now();
-            const timeDiff = currentTime - lastTime;
+            timeDiff = currentTime - lastTime;
             
             // Positionsprüfung
             let positionChanged = false;
@@ -153,9 +148,12 @@ async function saveToHistory(pool, payload, metaData, m) {
                 positionChanged = (lonDiff >= MIN_DISTANCE || latDiff >= MIN_DISTANCE);
             }
             
-            // Speichere NUR, wenn WEDER Zeit NOCH Position sich geändert haben
-            if (timeDiff < MIN_TIME_DIFF_MS && !positionChanged) {
-                return; // Überspringe
+            // Speichere wenn ENTWEDER genug Zeit vergangen ist ODER Position sich geändert hat
+            const shouldSave = timeDiff >= MIN_TIME_DIFF_MS || positionChanged;
+            
+            if (!shouldSave) {
+                console.debug(`Skipping history save for mmsi=${m}: timeDiff=${timeDiff}ms, positionChanged=${positionChanged}`);
+                return;
             }
         }
 
@@ -166,7 +164,7 @@ async function saveToHistory(pool, payload, metaData, m) {
             [m, navigational_status, rot, sog, cog, true_heading, lon, lat, special_manoeuvre_indicator, timestamp]
         );
         
-        console.log(`Position history saved for mmsi=${m}`);
+        console.log(`Position history saved for mmsi=${m} (timeDiff=${timeDiff}ms)`);
         
     } catch (err) {
         console.error('PositionReport history DB error:', err, { m });
