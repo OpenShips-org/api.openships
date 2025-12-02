@@ -118,26 +118,24 @@ exports.handle = async function(pool, message) {
 			`INSERT INTO current_positions (mmsi, ship_name, navigational_status, rot, sog, cog, true_heading, longitude, latitude, special_manoeuvre_indicator, timestamp)
 						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						ON DUPLICATE KEY UPDATE
-							ship_name = IF(VALUES(timestamp) > timestamp, VALUES(ship_name), ship_name),
-							navigational_status = IF(VALUES(timestamp) > timestamp, VALUES(navigational_status), navigational_status),
-							rot = IF(VALUES(timestamp) > timestamp, VALUES(rot), rot),
-							sog = IF(VALUES(timestamp) > timestamp, VALUES(sog), sog),
-							cog = IF(VALUES(timestamp) > timestamp, VALUES(cog), cog),
-							true_heading = IF(VALUES(timestamp) > timestamp, VALUES(true_heading), true_heading),
-							longitude = IF(VALUES(timestamp) > timestamp, VALUES(longitude), longitude),
-							latitude = IF(VALUES(timestamp) > timestamp, VALUES(latitude), latitude),
-							special_manoeuvre_indicator = IF(VALUES(timestamp) > timestamp, VALUES(special_manoeuvre_indicator), special_manoeuvre_indicator),
-							timestamp = IF(VALUES(timestamp) > timestamp, VALUES(timestamp), timestamp)`,
+							ship_name = VALUES(ship_name),
+							navigational_status = VALUES(navigational_status),
+							rot = VALUES(rot),
+							sog = VALUES(sog),
+							cog = VALUES(cog),
+							true_heading = VALUES(true_heading),
+							longitude = VALUES(longitude),
+							latitude = VALUES(latitude),
+							special_manoeuvre_indicator = VALUES(special_manoeuvre_indicator),
+							timestamp = VALUES(timestamp)`,
 			[m, ship_name, navigational_status, rot, sog, cog, true_heading, lon, lat, special_manoeuvre_indicator, timestamp]
 		);
-
-		console.debug('PositionReport handler: upserted current position for MMSI', m);
 
 			// History save: use in-memory cache to avoid a SELECT for each message
 		try {
 			const MIN_DISTANCE = 0.001; // ~100m
 			const MIN_TIME_DIFF_MS = 5 * 60 * 1000; // 5 minutes
-
+6ebf7539c8af713ff4ed59105b3de160dafd0cf8
 			const timestampMs = timestamp ? (timestamp instanceof Date ? timestamp.getTime() : Date.parse(timestamp)) : Date.now();
 			if (isNaN(timestampMs)) {
 				// fallback
@@ -173,8 +171,6 @@ exports.handle = async function(pool, message) {
 			lastSeen.set(m, { longitude: lon, latitude: lat, timestampMs });
 			// ensure cleaner running
 			startLastSeenCleaner();
-
-			console.debug('PositionReport handler: buffered history position for MMSI', m);
 		} catch (err) {
 			console.error('PositionReport handler: failed to save to history', err, { m });
 		}
@@ -185,3 +181,4 @@ exports.handle = async function(pool, message) {
 		throw err;
 	}
 };
+// end
