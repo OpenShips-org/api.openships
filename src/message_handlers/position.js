@@ -87,7 +87,7 @@ exports.handle = async function(pool, message) {
 		return;
 	}
 
-	const payload = message && message.Message && message.Message.PositionReport;
+	const payload = message && message.Message && message.PositionReport;
 	if (!payload) {
 		return;
 	}
@@ -117,16 +117,16 @@ exports.handle = async function(pool, message) {
 			`INSERT INTO current_positions (mmsi, ship_name, navigational_status, rot, sog, cog, true_heading, longitude, latitude, special_manoeuvre_indicator, timestamp)
 						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 						ON DUPLICATE KEY UPDATE
-							ship_name = VALUES(ship_name),
-							navigational_status = VALUES(navigational_status),
-							rot = VALUES(rot),
-							sog = VALUES(sog),
-							cog = VALUES(cog),
-							true_heading = VALUES(true_heading),
-							longitude = VALUES(longitude),
-							latitude = VALUES(latitude),
-							special_manoeuvre_indicator = VALUES(special_manoeuvre_indicator),
-							timestamp = VALUES(timestamp)`,
+							ship_name = IF(VALUES(timestamp) > timestamp, VALUES(ship_name), ship_name),
+							navigational_status = IF(VALUES(timestamp) > timestamp, VALUES(navigational_status), navigational_status),
+							rot = IF(VALUES(timestamp) > timestamp, VALUES(rot), rot),
+							sog = IF(VALUES(timestamp) > timestamp, VALUES(sog), sog),
+							cog = IF(VALUES(timestamp) > timestamp, VALUES(cog), cog),
+							true_heading = IF(VALUES(timestamp) > timestamp, VALUES(true_heading), true_heading),
+							longitude = IF(VALUES(timestamp) > timestamp, VALUES(longitude), longitude),
+							latitude = IF(VALUES(timestamp) > timestamp, VALUES(latitude), latitude),
+							special_manoeuvre_indicator = IF(VALUES(timestamp) > timestamp, VALUES(special_manoeuvre_indicator), special_manoeuvre_indicator),
+							timestamp = IF(VALUES(timestamp) > timestamp, VALUES(timestamp), timestamp)`,
 			[m, ship_name, navigational_status, rot, sog, cog, true_heading, lon, lat, special_manoeuvre_indicator, timestamp]
 		);
 
