@@ -106,9 +106,33 @@ router.get('/:mmsi', async (req, res) => {
 	if (!mmsi || isNaN(parseInt(mmsi))) {
 		return res.status(400).json({ error: 'Invalid MMSI parameter' });
 	}
-	// This methode is currently not implemented, returning 501
-	res.status(501).json({ message: 'Not Implemented: This endpoint is under development.' });
-	return;
+	try {
+        const [rows] = await pool.query(
+            `SELECT
+                mmsi               			AS MMSI,
+                ship_name          			AS ShipName,
+                timestamp          			AS Timestamp,
+                latitude           			AS Latitude,
+                longitude          			AS Longitude,
+                navigational_status         AS NavigationStatus,
+                rot                			AS RateOfTurn,
+                sog                			AS SpeedOverGround,
+                cog                			AS CourseOverGround,
+                true_heading				AS TrueHeading
+            FROM current_positions
+            WHERE mmsi = ?
+            ORDER BY timestamp DESC
+            LIMIT 1`,
+            [mmsi]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Vessel position not found' });
+        }
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(`Error fetching position for MMSI ${mmsi}:`, err.message, err.stack);
+        res.status(500).json({ error: 'Internal Server Error', message: err.message });
+    }
 });
 
 module.exports = router;

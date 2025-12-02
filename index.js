@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
 // start server
 // =============================================
 
-app.listen(port, () => {
-	console.log(`API server running at http://localhost:${port}`);
-	startAisStream();
+app.listen(port, '0.0.0.0', () => {
+  console.log(`API server running at http://0.0.0.0:${port}`);
+  startAisStream();
 });

@@ -122,45 +122,45 @@ function createSocket() {
   });
 
   socket.on('message', async (data) => {
-    const payload = typeof data === 'string' ? data : data.toString();
-    // wait until handlers (and DB tables) are ready before processing messages
+    // avoid extra allocation where possible
+    const payloadStr = typeof data === 'string' ? data : data.toString('utf8');
+
+    // handlersReady will usually be resolved before we get messages; awaiting is cheap
     try {
       await handlersReady;
     } catch (err) {
-      // handlersReady should not reject, but guard just in case
       console.error('handlersReady rejected:', err);
     }
 
     try {
-      const aisMessage = JSON.parse(payload);
-
+      const aisMessage = JSON.parse(payloadStr);
       const type = aisMessage.MessageType;
-      if (!type) {
-        // be explicit in logs so we can map incoming payloads to handlers
-        // console.debug('Incoming message without MessageType', aisMessage);
-        return;
-      }
+      if (!type) return;
 
       const handlerEntry = handlers[type];
-      if (!handlerEntry || typeof handlerEntry.handle !== 'function') {
-        // no handler for this type; ignore
-        return;
-      }
+      if (!handlerEntry || typeof handlerEntry.handle !== 'function') return;
 
       try {
-        const res = await handlerEntry.handle(pool, aisMessage);
-        // handler implementations may not return anything; log success anyway
+        // pass pool and message to handler; handlers may accept a third context parameter in future
+        await handlerEntry.handle(pool, aisMessage);
       } catch (err) {
         console.error(`Handler error for ${type}:`, err);
       }
     } catch (err) {
-      console.error('Failed to parse incoming message:', err, payload);
+      console.error('Failed to parse incoming message:', err);
     }
   });
 }
 
 // start initial connection
-createSocket();
+// Start socket once handlers are initialized (handlersReady is resolved immediately if no DB)
+handlersReady.then(() => {
+  try {
+    createSocket();
+  } catch (err) {
+    console.error('Failed to create WebSocket after handlersReady:', err);
+  }
+});
 
 // graceful shutdown: prevent reconnect attempts and close socket
 function shutdown() {
