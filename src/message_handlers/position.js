@@ -133,7 +133,7 @@ exports.handle = async function(pool, message) {
 			// History save: use in-memory cache to avoid a SELECT for each message
 		try {
 			const MIN_DISTANCE = 0.001; // ~100m
-			const MIN_TIME_DIFF_MS = 2 * 60 * 1000; // 2 minutes
+			const MIN_TIME_DIFF_MS = 5 * 60 * 1000; // 5 minutes
 
 			const timestampMs = timestamp ? (timestamp instanceof Date ? timestamp.getTime() : Date.parse(timestamp)) : Date.now();
 			if (isNaN(timestampMs)) {
