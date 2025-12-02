@@ -77,7 +77,8 @@ exports.ensure = async function(pool) {
 			latitude DOUBLE NULL,
 			special_manoeuvre_indicator INT NULL,
 			timestamp DATETIME NULL,
-			INDEX (mmsi)
+			INDEX (mmsi),
+			INDEX idx_mmsi_timestamp (mmsi, timestamp)
 		)
 	`);
 };
