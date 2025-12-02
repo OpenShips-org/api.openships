@@ -135,7 +135,7 @@ exports.handle = async function(pool, message) {
 		try {
 			const MIN_DISTANCE = 0.001; // ~100m
 			const MIN_TIME_DIFF_MS = 5 * 60 * 1000; // 5 minutes
-6ebf7539c8af713ff4ed59105b3de160dafd0cf8
+			
 			const timestampMs = timestamp ? (timestamp instanceof Date ? timestamp.getTime() : Date.parse(timestamp)) : Date.now();
 			if (isNaN(timestampMs)) {
 				// fallback
