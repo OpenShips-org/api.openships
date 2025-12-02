@@ -11,6 +11,7 @@ const HISTORY_FLUSH_INTERVAL_MS = parseInt(process.env.POS_HISTORY_FLUSH_MS) || 
 const HISTORY_MAX_BATCH = parseInt(process.env.POS_HISTORY_MAX_BATCH) || 500; // max rows per batch
 const LASTSEEN_TTL_MS = parseInt(process.env.POS_LASTSEEN_TTL_MS) || 24 * 60 * 60 * 1000; // 24h
 const LASTSEEN_CLEAN_INTERVAL_MS = parseInt(process.env.POS_LASTSEEN_CLEAN_MS) || 10 * 60 * 1000; // 10min
+const LASTSEEN_MAX_SIZE = 10000; // Neue Konstante
 
 // Background flusher for historyBuffer
 let flusherInterval = null;
@@ -41,8 +42,15 @@ function startLastSeenCleaner() {
 	if (cleanerInterval) return;
 	cleanerInterval = setInterval(() => {
 		const now = Date.now();
+		// Entferne abgelaufene
 		for (const [mmsi, v] of lastSeen.entries()) {
 			if (now - v.timestampMs > LASTSEEN_TTL_MS) lastSeen.delete(mmsi);
+		}
+		// Begrenze Größe, entferne älteste
+		if (lastSeen.size > LASTSEEN_MAX_SIZE) {
+			const sorted = Array.from(lastSeen.entries()).sort((a, b) => a[1].timestampMs - b[1].timestampMs);
+			const toRemove = sorted.slice(0, lastSeen.size - LASTSEEN_MAX_SIZE);
+			for (const [mmsi] of toRemove) lastSeen.delete(mmsi);
 		}
 	}, LASTSEEN_CLEAN_INTERVAL_MS);
 }
@@ -97,10 +105,12 @@ exports.handle = async function(pool, message) {
 	const metaData = message.MetaData || payload.Metadata || {};
 
 	const m = metaData.MMSI || metaData.MMSI_String || payload.MMSI || payload.mmsi || null;
+
 	if (!m) {
-		console.debug('PositionReport handler: no MMSI found in message, skipping. metaData sample:', JSON.stringify(metaData).slice(0,200));
+		console.warn('PositionReport handler: no MMSI found in message, skipping');
 		return;
 	}
+
 
 	const ship_name = metaData.ShipName || metaData.shipName || null;
 	const navigational_status = payload.NavigationalStatus ?? null;
@@ -110,8 +120,18 @@ exports.handle = async function(pool, message) {
 	const true_heading = payload.TrueHeading ?? null;
 	const lon = payload.Longitude ?? null;
 	const lat = payload.Latitude ?? null;
+	if ((lon !== null && (lon < -180 || lon > 180)) || (lat !== null && (lat < -90 || lat > 90))) {
+    	console.warn('Invalid coordinates, skipping history save:', { lon, lat });
+	    // Überspringe History, aber erlaube Update
+	    return result;
+	}
 	const special_manoeuvre_indicator = payload.SpecialManoeuvreIndicator ?? null;
 	const timestamp = metaData.time_utc ? new Date(metaData.time_utc) : null;
+	if (timestamp && isNaN(timestamp.getTime())) {		
+	    console.warn('Invalid timestamp in message, skipping history save:', metaData.time_utc);
+	    // Überspringe History, aber erlaube Current-Position-Update
+	    return result;
+	}
 
 	try {
 		const [result] = await pool.query(
@@ -157,7 +177,7 @@ exports.handle = async function(pool, message) {
 					positionChanged = (lonDiff >= MIN_DISTANCE || latDiff >= MIN_DISTANCE);
 				}
 
-				shouldSave = timeDiff >= MIN_TIME_DIFF_MS || positionChanged;
+				shouldSave = timeDiff >= MIN_TIME_DIFF_MS;
 			}
 
 			if (shouldSave) {
