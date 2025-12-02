@@ -88,7 +88,7 @@ exports.handle = async function(pool, message) {
 		return;
 	}
 
-	const payload = message && message.Message && message.PositionReport;
+	const payload = message && message.Message && message.Message.PositionReport;
 	if (!payload) {
 		return;
 	}
@@ -131,6 +131,8 @@ exports.handle = async function(pool, message) {
 			[m, ship_name, navigational_status, rot, sog, cog, true_heading, lon, lat, special_manoeuvre_indicator, timestamp]
 		);
 
+		console.debug('PositionReport handler: upserted current position for MMSI', m);
+
 			// History save: use in-memory cache to avoid a SELECT for each message
 		try {
 			const MIN_DISTANCE = 0.001; // ~100m
@@ -171,6 +173,8 @@ exports.handle = async function(pool, message) {
 			lastSeen.set(m, { longitude: lon, latitude: lat, timestampMs });
 			// ensure cleaner running
 			startLastSeenCleaner();
+
+			console.debug('PositionReport handler: buffered history position for MMSI', m);
 		} catch (err) {
 			console.error('PositionReport handler: failed to save to history', err, { m });
 		}
@@ -181,4 +185,3 @@ exports.handle = async function(pool, message) {
 		throw err;
 	}
 };
-// end
